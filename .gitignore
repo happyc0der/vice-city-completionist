@@ -1,0 +1,12 @@
+build/
+*.obj
+*.exp
+*.lib
+*.pkl
+__pycache__/
+vc.json
+# never commit game files or third-party mod binaries
+*.scm
+*.gxt
+*.adf
+gta-vc.exe
