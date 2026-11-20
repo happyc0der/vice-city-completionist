@@ -42,22 +42,22 @@ Hidden packages, rampages, unique stunt jumps and store robberies are shown as c
 use [Collectibles on Radar](https://github.com/kong78/collectibles-on-radar-gta-vc), which this was designed to sit
 next to.
 
-### Drone-style RC helicopter controls (experimental)
+### Simple flying controls (experimental)
 
-The game flies the RC helicopters with tilt physics on the driving keys, which is fiddly on a keyboard. With
-`[RC] DroneControls=1` in the ini, the RC Raider and RC Goblin (RC Raider Pickup, Demolition Man) fly like a camera
-drone instead:
+The game flies helicopters and planes with tilt physics spread over the driving, lean and look keys, which is
+fiddly on a keyboard. With `[Flying] SimpleControls=1` in the ini, every aircraft you fly is steered with WASD:
 
 | Key | Action |
 |---|---|
-| W / S | Forward / back |
-| A / D | Sideways |
-| Space | Up |
-| Left Shift or Left Ctrl | Down |
-| Mouse, or Q / E, or Left / Right arrows | Turn |
+| W / S | Forward / backward |
+| A / D | Turn left / right |
+| Space | Climb |
+| Left Shift | Descend |
 
-It stays level and hovers when nothing is pressed. `SpeedPercent` scales the speed. This overwrites the
-helicopter's velocity and orientation every frame, so it is off by default; see Limitations.
+With nothing pressed it hovers in place. It applies to the helicopters (Maverick, Sparrow, Sea Sparrow, Hunter and
+the police and news Mavericks), the Skimmer, and the RC helicopters and RC plane. `SpeedPercent` scales the speed.
+
+This overwrites the aircraft's velocity and orientation every frame, so it is off by default; see Limitations.
 
 ### How it knows
 
@@ -148,9 +148,10 @@ What speedrunners run, for comparison: the stock 1.0 game, Frame Limiter on, and
 - **No marker for story missions** (the game already shows those) or for collectibles (use Collectibles on Radar).
 - **The resolution switch changes your whole desktop** while the game runs. Other windows can move or resize, and
   alt-tabbed apps are at the lower resolution too. It is off unless you set it.
-- **The RC drone controls are new and not yet confirmed in play.** They replace the game's flight physics for the
-  RC helicopters, the keys are fixed (not read from the game's bindings), and they only run while the HUD is drawn.
-  The RC plane and RC car are not affected.
+- **The simple flying controls are new and not yet confirmed in play.** They replace the game's flight physics
+  rather than remap keys, so aircraft no longer bank, stall or need a take-off run, and planes can hover. The keys
+  are fixed (not read from the game's bindings), aircraft are recognised by a hard-coded list of the stock model
+  IDs, and it only runs while the HUD is drawn. Aiming the Hunter's weapons up or down is not possible.
 - **`AimTurnsPlayer` is an untested experiment** written against a build that was then removed. Leave it off.
 - **`FillScreen` does not work** with Ultimate ASI Loader's window mode.
 - **Speedrun leaderboards do not allow this plugin** during runs.
