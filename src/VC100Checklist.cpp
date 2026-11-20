@@ -298,6 +298,9 @@ static int g_fillTries = 0;
 static int g_fill = 1;              // ini: [Window] FillScreen
 static int g_aimFix = 1;            // ini: [Camera] AimTurnsPlayer // panel position, percent of the screen from the top-left
 
+static int   g_rcDrone = 0;         // ini: [RC] DroneControls
+static float g_rcSpeed = 1.0f;      // ini: [RC] SpeedPercent
+
 static void LoadSettings() {
     char ini[MAX_PATH]; _snprintf(ini, MAX_PATH, "%sVC100Checklist.ini", g_dir);
     kToggle = GetPrivateProfileIntA("Keys", "Toggle", kToggle, ini);
@@ -312,6 +315,10 @@ static void LoadSettings() {
     g_px = (float)GetPrivateProfileIntA("Display", "LeftPercent", 1, ini);
     g_py = (float)GetPrivateProfileIntA("Display", "TopPercent", 2, ini);
     g_aimFix = GetPrivateProfileIntA("Camera", "AimTurnsPlayer", 0, ini);
+    g_rcDrone = GetPrivateProfileIntA("RC", "DroneControls", 0, ini);
+    int rcPct = GetPrivateProfileIntA("RC", "SpeedPercent", 100, ini);
+    if (rcPct < 20) rcPct = 20; if (rcPct > 300) rcPct = 300;
+    g_rcSpeed = rcPct / 100.0f;
     g_fill = GetPrivateProfileIntA("Window", "FillScreen", 0, ini);
 }
 
@@ -469,6 +476,61 @@ static void AimTurnsPlayer() {
     *(float*)(ped + 0x378) = heading;
 }
 
+// ---------------------------------------------------------------- drone-style RC helicopter controls
+// The game flies the RC helicopters (RC Raider, RC Goblin) with tilt physics: climb/descend on accelerate/brake,
+// tilt on the steering and lean keys. With [RC] DroneControls=1 they fly like a camera drone instead:
+//   W/S forward and back, A/D sideways, Space up, Left Shift or Left Ctrl down, mouse or Q/E (or arrows) to turn.
+// It stays level, hovers when nothing is pressed, and moves where its nose points.
+// How: once per frame the helicopter's velocity and orientation are overwritten. Whatever the game's own physics
+// added during the frame (gravity, its reading of the same keys) is measured and cancelled on the next frame.
+static void RcDrone() {
+    static unsigned char* last = 0;
+    static float heading = 0.0f, cur[3] = { 0, 0, 0 }, set[3] = { 0, 0, 0 };
+    static bool haveSet = false;
+    unsigned char* veh = *(unsigned char**)(0x94AD28 + 4);                      // CWorld::Players[0].m_pRemoteVehicle
+    if (!g_rcDrone || !veh) { last = 0; haveSet = false; return; }
+    short model = *(short*)(veh + 0x5C);
+    if (model != 195 && model != 231) { last = 0; haveSet = false; return; }    // RC Raider, RC Goblin
+    float* right = (float*)(veh + 0x04); float* fwd = (float*)(veh + 0x14); float* up = (float*)(veh + 0x24);
+    float* spd = (float*)(veh + 0x70);   float* turn = (float*)(veh + 0x7C);
+    if (veh != last) {                                                          // just took control
+        last = veh; heading = atan2f(-fwd[0], fwd[1]);
+        cur[0] = cur[1] = cur[2] = 0.0f; haveSet = false;
+    }
+    bool focus = GameFocused();
+    #define RCKEY(vk) (focus && (GetAsyncKeyState(vk) & 0x8000) != 0)
+    float step = MemF(0x975424);                                                // CTimer::ms_fTimeStep, 1.0 = 1/50 s
+    if (!(step > 0.0f && step < 5.0f)) step = 1.67f;
+
+    float yaw = 0.0f;
+    if (RCKEY('Q') || RCKEY(VK_LEFT))  yaw += 1.0f;
+    if (RCKEY('E') || RCKEY(VK_RIGHT)) yaw -= 1.0f;
+    heading += yaw * 0.035f * step;
+    if (focus) heading -= MemF(0x94D788 + 8) * 0.004f;                          // mouse X this frame
+
+    float f = (RCKEY('W') ? 1.0f : 0.0f) - (RCKEY('S') ? 1.0f : 0.0f);
+    float s = (RCKEY('D') ? 1.0f : 0.0f) - (RCKEY('A') ? 1.0f : 0.0f);
+    float v = (RCKEY(VK_SPACE) ? 1.0f : 0.0f) - ((RCKEY(VK_LSHIFT) || RCKEY(VK_LCONTROL)) ? 1.0f : 0.0f);
+    #undef RCKEY
+    float sn = sinf(heading), cs = cosf(heading);
+    const float maxH = 0.30f * g_rcSpeed, maxV = 0.18f * g_rcSpeed;             // game units per 1/50 s
+    float target[3] = { (-sn * f + cs * s) * maxH, (cs * f + sn * s) * maxH, v * maxV };
+    float blend = 1.0f - powf(0.80f, step);
+    for (int i = 0; i < 3; i++) cur[i] += (target[i] - cur[i]) * blend;
+
+    for (int i = 0; i < 3; i++) {
+        float added = haveSet ? spd[i] - set[i] : 0.0f;                         // what the game's physics did last frame
+        if (added > 0.03f) added = 0.03f; if (added < -0.03f) added = -0.03f;   // don't fight a collision
+        set[i] = cur[i] - added;
+        spd[i] = set[i];
+        turn[i] = 0.0f;
+    }
+    haveSet = true;
+    right[0] = cs;  right[1] = sn; right[2] = 0.0f;
+    fwd[0] = -sn;   fwd[1] = cs;   fwd[2] = 0.0f;
+    up[0] = 0.0f;   up[1] = 0.0f;  up[2] = 1.0f;
+}
+
 static void (__cdecl* g_origHud)() = 0;
 static void __cdecl HudHook() {
     if (g_origHud) g_origHud();
@@ -477,6 +539,7 @@ static void __cdecl HudHook() {
     g_lastTime = now;
     HandleKeys();
     AimTurnsPlayer();
+    RcDrone();
     if (g_marked >= 0 && IsDone(Items[g_marked])) g_marked = -1;
     if (!g_logged && now > 3000) { g_logged = true; WriteLog(); }
     if (g_show) DrawPanel();
